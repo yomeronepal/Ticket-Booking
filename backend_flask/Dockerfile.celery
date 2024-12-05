@@ -1,0 +1,34 @@
+# Use Python 3.9 Alpine as the base image
+FROM python:3.9.16-alpine
+
+# Set the working directory
+WORKDIR /app
+
+# Install necessary system dependencies
+RUN apk --no-cache add \
+    gcc \
+    musl-dev \
+    linux-headers \
+    libffi-dev \
+    postgresql-dev \
+    librdkafka-dev \
+    bash \
+    make \
+    curl
+
+# Copy requirements.txt to the container
+COPY backend_flask/requirements.txt /app/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application
+COPY . /app
+
+# Expose Flask's default port
+# Set environment variables
+ENV FLASK_APP=app.py
+ENV FLASK_ENV=development
+
+# Default command to run the Flask app

@@ -1,0 +1,133 @@
+version: "3"
+
+networks:
+  backend_flask_network:
+    driver: bridge
+services:
+  backend_flask:
+    build: ./backend_flask
+    restart: always
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - KAFKA_TOPIC=flask_topic
+      - BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - db
+      - redis
+      - kafka
+      - zookeeper
+    ports:
+      - "8000:8000"
+    networks:
+        - backend_flask_network
+  celery:
+      restart: always
+      build:
+        context: .
+        dockerfile: ./backend_flask/Dockerfile.celery
+      volumes:
+        - ./backend_flask:/app
+      environment:
+        - KAFKA_BROKER=kafka:9092
+        - KAFKA_TOPIC=flask_topic
+        - BOOTSTRAP_SERVERS=kafka:9092
+      env_file: ./backend_flask/.env
+      command: >
+        sh -c "celery -A app.celery worker -l INFO"
+      container_name: flask_celery
+      depends_on:
+        - db
+        - redis
+        - kafka
+        - zookeeper
+      networks:
+        - backend_flask_network
+
+  celery-beat:
+    restart: always
+    build:
+      context: .
+      dockerfile: ./backend_flask/Dockerfile.celery
+    volumes:
+      - ./backend_flask:/app
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - KAFKA_TOPIC=flask_topic
+      - BOOTSTRAP_SERVERS=kafka:9092
+    env_file: ./backend_flask/.env
+    command: >
+      sh -c "celery -A app.celery beat -l INFO"
+    container_name: flask_celery_beat
+    depends_on:
+      - db
+      - redis
+      - kafka
+      - zookeeper
+      - celery
+    networks:
+        - backend_flask_network
+  consumer:
+    build:
+      context: .
+      dockerfile: ./backend_flask/Dockerfile.celery  # You can point to a different Dockerfile if needed
+    volumes:
+      - ./backend_flask:/app  # Mount the backend_flask directory
+    environment:
+      - KAFKA_BROKER=kafka:9092
+      - KAFKA_TOPIC=flask_topic
+      - BOOTSTRAP_SERVERS=kafka:9092
+    command: >
+      python /app/src/consumer.py  # Run directly in the foreground
+    # command: >
+    #   sh -c "python -m pdb /app/src/consumer.py"
+    # command: python /app/src/consumer.py
+    # command: python -m pdb /app/src/consumer.py
+
+    container_name: flask_consumer
+    depends_on:
+      - kafka
+      - backend_flask
+      - redis
+      - zookeeper
+    networks:
+      - backend_flask_network
+  
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+    networks:
+        - backend_flask_network
+  kafka:
+    image: wurstmeister/kafka:latest
+    environment:
+      KAFKA_LISTENERS: PLAINTEXT://kafka:9092  # Kafka listens on this interface
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092  # How it is advertised to clients
+      KAFKA_LISTENER_SECURITY_PROTOCOL: PLAINTEXT  # No encryption for simplicity
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181  # Zookeeper connects to this container
+    networks:
+      - backend_flask_network
+    ports:
+      - "9092:9092"  # Expose the port to host
+      
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    networks:
+      - backend_flask_network
+    ports:
+      - "2181:2181"
+  
+  db:
+    image: postgres:12
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    networks:
+      - backend_flask_network
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+volumes:
+  postgres_data:

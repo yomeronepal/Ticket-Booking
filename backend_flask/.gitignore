@@ -1,0 +1,14 @@
+/.venv
+/.env
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Logs
+logs/
+*.log
+
+# Instance folder (e.g., Flask-specific)
+instance/
+celerybeat-schedule
+celerybeat-schedule.db
